@@ -6,6 +6,8 @@ from selenium.webdriver.support import expected_conditions as EC
 from bs4 import BeautifulSoup
 import pandas as pd
 import time
+import os
+
 
 def scrape_mediamarkt_links(pages):
     options = Options()
@@ -36,23 +38,22 @@ def scrape_mediamarkt_links(pages):
 
 
 def extract_product_data(url, driver):
+
     driver.get(url)
-    time.sleep(3)  # Allow JS to load
+    time.sleep(3)  # Let JS load
 
     soup = BeautifulSoup(driver.page_source, "html.parser")
-
     data_dict = {}
 
-    # Extract price and review info
-    price_tag = soup.find_all("span", class_="sc-e0c7d9f7-0 bPkjPs")[:2]
-    if price_tag:
-        data_dict["reviews"] = price_tag[0].get_text(strip=True)
-        data_dict["price"] = price_tag[1].get_text(strip=True)
+    # Extract price
+    price_whole = soup.find("span", attrs={"data-test": "branded-price-whole-value"})
+    if price_whole:
+        price_text = price_whole.get_text(strip=True)
+        data_dict["price"] = price_text
     else:
         data_dict["price"] = None
-        data_dict["reviews"] = None
 
-    # Extract product specification table(s) via <tbody>
+    # Extract technical specifications from <tbody>
     tbodies = soup.find_all("tbody")
     for tbody in tbodies:
         rows = tbody.find_all("tr")
@@ -63,12 +64,18 @@ def extract_product_data(url, driver):
                 value = tds[1].get_text(strip=True)
                 data_dict[key] = value
 
+    # add product URL
     data_dict["URL"] = url
+
+    # Extract reviews
+    #data_dict["reviews"] = None  # Placeholder
+
     return data_dict
 
 
+
 if __name__ == "__main__":
-    product_links = scrape_mediamarkt_links(pages=1)
+    product_links = scrape_mediamarkt_links(pages=2)
     print(f"Found {len(product_links)} product links.")
 
     options = Options()
@@ -89,5 +96,8 @@ if __name__ == "__main__":
 
     # Create DataFrame and export
     df = pd.DataFrame(all_products)
-    df.to_excel("mediamarkt_products_test.xlsx", index=False)
-    print("Saved to mediamarkt_products.xlsx")
+    
+    os.makedirs("Data", exist_ok=True)
+    output_path = os.path.join("Data", "mediamarkt_products.xlsx")
+    df.to_excel(output_path, index=False)
+    print(f"Saved to {output_path}")
