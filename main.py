@@ -7,13 +7,13 @@ from bs4 import BeautifulSoup
 import pandas as pd
 import time
 
-def scrape_mediamarkt_links(pages=1):
+def scrape_mediamarkt_links(pages):
     options = Options()
 
     driver = webdriver.Chrome(options=options)
     base_url = "https://www.mediamarkt.hu/hu/search.html?query=telefon&page="
 
-    hrefs = set()
+    hrefs = set() # use a set to avoid duplicates
 
     for page in range(1, pages + 1):
         url = f"{base_url}{page}"
@@ -39,7 +39,9 @@ def extract_product_data(url, driver):
     time.sleep(3)  # Allow JS to load
 
     soup = BeautifulSoup(driver.page_source, "html.parser")
-    tables = soup.find_all("table", class_="sc-43bf5cfc-0 gVHLDp")[:8]
+    #tables = soup.find_all("table", class_="sc-43bf5cfc-0 gVHLDp")[:8]
+    tables = soup.find_all("table", class_="sc-eb5d0dd3-0 brREjs")[:8]
+
     data_dict = {}
 
     # Extract price
@@ -55,8 +57,10 @@ def extract_product_data(url, driver):
     for table in tables:
         rows = table.find_all("tr")
         for row in rows:
-            key_tag = row.find("p", class_="sc-5a9f6c31-0 ejfRGP")
-            value_tag = row.find("p", class_="sc-5a9f6c31-0 bMHOgx")
+            #key_tag = row.find("p", class_="sc-5a9f6c31-0 ejfRGP")
+            #value_tag = row.find("p", class_="sc-5a9f6c31-0 bMHOgx")
+            key_tag = row.find("p", class_="sc-e254ed6f-0 jUOGRg")
+            value_tag = row.find("p", class_="sc-e254ed6f-0 eRJAKe")
             if key_tag and value_tag:
                 key = key_tag.get_text(strip=True)
                 value = value_tag.get_text(strip=True)
@@ -68,7 +72,7 @@ def extract_product_data(url, driver):
     return data_dict
 
 if __name__ == "__main__":
-    product_links = scrape_mediamarkt_links(pages=20)
+    product_links = scrape_mediamarkt_links(pages=1)
     print(f"Found {len(product_links)} product links.")
 
     options = Options()
@@ -89,5 +93,5 @@ if __name__ == "__main__":
 
     # Create DataFrame and export
     df = pd.DataFrame(all_products)
-    df.to_excel("mediamarkt_products.xlsx", index=False)
+    df.to_excel("mediamarkt_products_test.xlsx", index=False)
     print("Saved to mediamarkt_products.xlsx")
