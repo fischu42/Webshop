@@ -43,10 +43,10 @@ def create_input_row(label, input_component):
     ], className="mb-2")
 
 app.layout = dbc.Container([
-    html.H2("📱 Smartphone Price Predictor", className="my-4 text-center"),
+    html.H2("Smartphone Price Predictor", className="my-4 text-center"),
 
     dbc.Card([
-        dbc.CardHeader("🔧 Inputs"),
+        dbc.CardHeader("Inputs"),
         dbc.CardBody([
             html.H5("Binary Categorical Inputs"),
             *[
