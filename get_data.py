@@ -53,7 +53,7 @@ def extract_product_data(url, driver):
     else:
         data_dict["price"] = None
 
-    # Extract technical specifications from <tbody>
+    # Extract technical specifications
     tbodies = soup.find_all("tbody")
     for tbody in tbodies:
         rows = tbody.find_all("tr")
@@ -75,7 +75,8 @@ def extract_product_data(url, driver):
 
 
 if __name__ == "__main__":
-    product_links = scrape_mediamarkt_links(pages=2)
+
+    product_links = scrape_mediamarkt_links(pages=15)
     print(f"Found {len(product_links)} product links.")
 
     options = Options()
