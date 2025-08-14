@@ -6,6 +6,10 @@ import yaml
 from pycaret.regression import load_model, predict_model
 import webbrowser
 import threading
+import shap
+import plotly.graph_objects as go
+import numpy as np
+import os
 
 # --------------------
 # Load model and stats
@@ -21,11 +25,10 @@ with open('numeric_stats.yaml', 'r') as f:
 binary_cat = ['type', 'face_id', 'dual_sim']
 ordinal_cat = ['back_camera']
 numeric_columns = [
-    'capacity', 'memory', 'screen_diagonal', 
-    'pixel_w', 'pixel_h', 'back_camera_resolution',
-    'front_camera_resolution', 'w', 'h', 
-    'd', 'mass', 'battery'
-]
+ 'capacity', 'memory', 'screen_diagonal', 
+ 'aspect_ratio', 'pixel_count', 'back_camera_resolution',
+ 'front_camera_resolution', 'volume', 'mass', 'battery'
+ ]
 
 binary_options = [{'label': 'Yes', 'value': 1}, {'label': 'No', 'value': 0}]
 ordinal_options = [{'label': str(i), 'value': i} for i in range(1, 5)]
@@ -73,9 +76,11 @@ app.layout = dbc.Container([
 
     dbc.Card([
         dbc.CardHeader("Prediction Output"),
-        dbc.CardBody(
-            html.Div(id='output-prediction', style={'fontSize': 24, 'fontWeight': 'bold'})
-        )
+        dbc.CardBody([
+            html.Div(id='output-prediction', style={'fontSize': 24, 'fontWeight': 'bold'}),
+            html.Hr(),
+            html.Div([dcc.Graph(id='shap-waterfall')])
+        ])
     ])
 ], fluid=True)
 
@@ -86,6 +91,7 @@ app.layout = dbc.Container([
     Output('output-prediction', 'children'),
     Output('input-warning', 'children'),
     Output('input-warning', 'is_open'),
+    Output('shap-waterfall', 'figure'),
     Input('predict-button', 'n_clicks'),
     [
         State(f'input-{col}', 'value') for col in (binary_cat + ordinal_cat + numeric_columns)
@@ -93,7 +99,7 @@ app.layout = dbc.Container([
 )
 def make_prediction(n_clicks, *values):
     if n_clicks == 0:
-        return "", "", False
+        return "", "", False, go.Figure()
 
     all_cols = binary_cat + ordinal_cat + numeric_columns
     input_dict = dict(zip(all_cols, values))
@@ -101,7 +107,7 @@ def make_prediction(n_clicks, *values):
     # Check for missing values
     missing = [key for key, val in input_dict.items() if val is None]
     if missing:
-        return "", f"Please fill in all inputs. Missing: {', '.join(missing)}", True
+        return "", f"Please fill in all inputs. Missing: {', '.join(missing)}", True, go.Figure()
 
     # Min-max normalize numeric features
     for col in numeric_columns:
@@ -113,15 +119,46 @@ def make_prediction(n_clicks, *values):
     input_df = pd.DataFrame([input_dict])
     prediction = predict_model(model, data=input_df)
 
-    # Get prediction column
     prediction_columns = prediction.columns.difference(input_df.columns)
     if prediction_columns.empty:
-        return "", "Prediction failed: No output column returned by model.", True
+        return "", "Prediction failed: No output column returned by model.", True, go.Figure()
 
     pred_col = prediction_columns[0]
     pred = prediction[pred_col].iloc[0]
 
-    return f"Predicted price: {pred:.2f}", "", False
+    # ---------------------
+    # SHAP explanation
+    # ---------------------
+    # Preprocess data using the pipeline's steps before the actual estimator
+    preprocessing_steps = model[:-1]  # everything except last step
+    X_transformed = preprocessing_steps.transform(input_df)
+
+    # Extract raw trained estimator
+    raw_model = model.named_steps['actual_estimator']
+
+    # TreeExplainer for tree-based models like ExtraTrees
+    explainer = shap.TreeExplainer(raw_model)
+    shap_values = explainer.shap_values(X_transformed)
+
+    # Waterfall plot using transformed feature names
+    feature_names = preprocessing_steps.transform(pd.DataFrame([input_dict])).columns \
+        if hasattr(X_transformed, 'columns') else [f'feature_{i}' for i in range(X_transformed.shape[1])]
+
+    shap_array = shap_values[0] if isinstance(shap_values, list) else shap_values
+    shap_pairs = sorted(zip(feature_names, shap_array[0]), key=lambda x: abs(x[1]), reverse=True)
+
+    fig = go.Figure(go.Waterfall(
+        name="SHAP",
+        orientation="v",
+        measure=["relative"] * len(shap_pairs),
+        x=[f[0] for f in shap_pairs],
+        text=[f"{f[1]:.2f}" for f in shap_pairs],
+        y=[f[1] for f in shap_pairs]
+    ))
+    fig.update_layout(title="SHAP Waterfall Plot", waterfallgap=0.3)
+
+    return f"Predicted price: {pred:.2f}", "", False, fig
+
 
 # ---------------------
 # Auto-open browser on launch
@@ -129,6 +166,8 @@ def make_prediction(n_clicks, *values):
 def open_browser():
     webbrowser.open_new("http://127.0.0.1:8050/")
 
+
 if __name__ == '__main__':
-    threading.Timer(1.25, open_browser).start()
+    if os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+        threading.Timer(1.25, open_browser).start()
     app.run(debug=True)
